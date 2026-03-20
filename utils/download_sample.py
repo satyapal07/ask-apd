@@ -1,93 +1,159 @@
 """
-Download a small sample dataset for Ask APD.
+Download all datasets for Ask APD from HuggingFace.
 
-Options:
-  A) Amazon Reviews via HuggingFace (requires: pip install datasets)
-  B) Brazilian E-Commerce via Kaggle (requires: pip install kaggle + kaggle.json)
-  C) Built-in synthetic sample (no dependencies)
+Downloads 4 tables from McAuley-Lab/Amazon-Reviews-2023:
+  - beauty_reviews.parquet     (701K rows, ~143 MB)
+  - beauty_products.parquet    (112K rows, ~10 MB)
+  - electronics_reviews.parquet (500K rows, ~110 MB)
+  - electronics_products.parquet (161K rows, ~18 MB)
 
 Run: python utils/download_sample.py
 """
 
 import os
+import io
+import json
+import requests
 import pandas as pd
-import numpy as np
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+HF_BASE = "https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/resolve/main"
 
-def generate_synthetic_sample(n: int = 5000) -> pd.DataFrame:
-    """Generate a realistic synthetic e-commerce review dataset."""
-    rng = np.random.default_rng(42)
 
-    categories = [
-        "Electronics", "Books", "Clothing", "Home & Kitchen",
-        "Sports", "Beauty", "Toys", "Automotive", "Music", "Health",
-    ]
-    products = {
-        "Electronics": ["Laptop", "Phone", "Headphones", "Camera", "Tablet"],
-        "Books": ["Fiction Novel", "Cookbook", "Self-Help", "Biography", "Textbook"],
-        "Clothing": ["T-Shirt", "Jeans", "Jacket", "Sneakers", "Dress"],
-        "Home & Kitchen": ["Coffee Maker", "Blender", "Pan Set", "Knife Set", "Vacuum"],
-        "Sports": ["Yoga Mat", "Dumbbells", "Running Shoes", "Bike Helmet", "Tennis Racket"],
-        "Beauty": ["Moisturizer", "Lipstick", "Shampoo", "Perfume", "Foundation"],
-        "Toys": ["LEGO Set", "Board Game", "Action Figure", "Puzzle", "Remote Car"],
-        "Automotive": ["Car Cover", "Phone Mount", "Dash Cam", "Floor Mats", "Jump Starter"],
-        "Music": ["Guitar", "Ukulele", "Keyboard", "Drum Pad", "Microphone"],
-        "Health": ["Vitamins", "Protein Powder", "Blood Pressure Monitor", "Scale", "Thermometer"],
-    }
+def _download_parquet(url: str, label: str) -> pd.DataFrame:
+    print(f"Downloading {label}...")
+    r = requests.get(url, stream=True, timeout=300)
+    r.raise_for_status()
+    data = b""
+    total = 0
+    for chunk in r.iter_content(4 * 1024 * 1024):
+        data += chunk
+        total += len(chunk)
+        print(f"  {total / 1e6:.0f} MB", end="\r")
+    print()
+    return pd.read_parquet(io.BytesIO(data))
 
+
+def _download_reviews_jsonl(url: str, label: str, max_rows: int) -> pd.DataFrame:
+    print(f"Downloading {label} (first {max_rows:,} rows)...")
     rows = []
-    start_date = pd.Timestamp("2020-01-01")
-    end_date = pd.Timestamp("2024-12-31")
-    date_range = int((end_date - start_date).days)
+    buf = b""
+    total_bytes = 0
+    r = requests.get(url, stream=True, timeout=300)
+    r.raise_for_status()
+    for chunk in r.iter_content(chunk_size=4 * 1024 * 1024):
+        total_bytes += len(chunk)
+        buf += chunk
+        lines = buf.split(b"\n")
+        buf = lines[-1]
+        for line in lines[:-1]:
+            line = line.strip()
+            if line:
+                try:
+                    rows.append(json.loads(line))
+                except Exception:
+                    pass
+        print(f"  {total_bytes / 1e6:.0f} MB → {len(rows):,} rows", end="\r")
+        if len(rows) >= max_rows:
+            r.close()
+            break
+    print()
+    return pd.DataFrame(rows[:max_rows])
 
-    for _ in range(n):
-        category = rng.choice(categories)
-        product = rng.choice(products[category])
-        rating = rng.choice([1, 2, 3, 4, 5], p=[0.05, 0.08, 0.12, 0.30, 0.45])
-        helpful_votes = int(rng.exponential(5))
-        total_votes = helpful_votes + int(rng.exponential(2))
-        review_date = start_date + pd.Timedelta(days=int(rng.integers(0, date_range)))
 
-        rows.append({
-            "product_id": f"B{rng.integers(1000000, 9999999):07d}",
-            "product_name": product,
-            "category": category,
-            "rating": rating,
-            "helpful_votes": helpful_votes,
-            "total_votes": total_votes,
-            "verified_purchase": rng.choice([True, False], p=[0.75, 0.25]),
-            "review_date": review_date,
-            "review_year": review_date.year,
-            "review_month": review_date.month,
-            "review_length": int(rng.integers(20, 800)),
-            "price": round(float(rng.uniform(5, 500)), 2),
-        })
+def _clean_reviews(df: pd.DataFrame) -> pd.DataFrame:
+    df["review_date"]    = pd.to_datetime(df["timestamp"], unit="ms")
+    df["review_year"]    = df["review_date"].dt.year
+    df["review_month"]   = df["review_date"].dt.month
+    df["review_quarter"] = df["review_date"].dt.quarter
+    df = df.rename(columns={
+        "rating":       "star_rating",
+        "title":        "review_title",
+        "text":         "review_text",
+        "helpful_vote": "helpful_votes",
+    })
+    df["review_length"] = df["review_text"].fillna("").str.len()
+    df = df.drop(columns=["images", "user_id", "timestamp", "asin"], errors="ignore")
+    cols = [
+        "review_date", "review_year", "review_month", "review_quarter",
+        "star_rating", "review_title", "review_text", "review_length",
+        "helpful_votes", "verified_purchase", "parent_asin",
+    ]
+    return df[[c for c in cols if c in df.columns]]
 
-    df = pd.DataFrame(rows)
-    df["review_date"] = pd.to_datetime(df["review_date"])
-    return df
+
+def _clean_products(df: pd.DataFrame) -> pd.DataFrame:
+    keep = ["parent_asin", "title", "main_category", "average_rating",
+            "rating_number", "price", "store", "categories"]
+    df = df[[c for c in keep if c in df.columns]].copy()
+    df = df.rename(columns={"title": "product_title", "store": "brand"})
+    df["price"] = df["price"].astype(str).str.replace(r"[^\d.]", "", regex=True)
+    df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    return df.dropna(subset=["product_title"])
+
+
+def download_beauty_reviews():
+    out = os.path.join(DATA_DIR, "beauty_reviews.parquet")
+    if os.path.exists(out):
+        print(f"  beauty_reviews.parquet already exists, skipping.")
+        return
+    url = f"{HF_BASE}/raw/review_categories/All_Beauty.jsonl"
+    df = _download_reviews_jsonl(url, "beauty_reviews", max_rows=701_528)
+    df = _clean_reviews(df)
+    df.to_parquet(out, index=False)
+    print(f"  Saved beauty_reviews.parquet — {len(df):,} rows ({os.path.getsize(out)/1e6:.0f} MB)")
+
+
+def download_beauty_products():
+    out = os.path.join(DATA_DIR, "beauty_products.parquet")
+    if os.path.exists(out):
+        print(f"  beauty_products.parquet already exists, skipping.")
+        return
+    url = f"{HF_BASE}/raw_meta_All_Beauty/full-00000-of-00001.parquet"
+    df = _download_parquet(url, "beauty_products")
+    df = _clean_products(df)
+    df.to_parquet(out, index=False)
+    print(f"  Saved beauty_products.parquet — {len(df):,} rows ({os.path.getsize(out)/1e6:.0f} MB)")
+
+
+def download_electronics_reviews():
+    out = os.path.join(DATA_DIR, "electronics_reviews.parquet")
+    if os.path.exists(out):
+        print(f"  electronics_reviews.parquet already exists, skipping.")
+        return
+    url = f"{HF_BASE}/raw/review_categories/Electronics.jsonl"
+    df = _download_reviews_jsonl(url, "electronics_reviews", max_rows=500_000)
+    df = _clean_reviews(df)
+    df.to_parquet(out, index=False)
+    print(f"  Saved electronics_reviews.parquet — {len(df):,} rows ({os.path.getsize(out)/1e6:.0f} MB)")
+
+
+def download_electronics_products():
+    out = os.path.join(DATA_DIR, "electronics_products.parquet")
+    if os.path.exists(out):
+        print(f"  electronics_products.parquet already exists, skipping.")
+        return
+    url = f"{HF_BASE}/raw_meta_Electronics/full-00000-of-00010.parquet"
+    df = _download_parquet(url, "electronics_products")
+    df = _clean_products(df)
+    df.to_parquet(out, index=False)
+    print(f"  Saved electronics_products.parquet — {len(df):,} rows ({os.path.getsize(out)/1e6:.0f} MB)")
 
 
 if __name__ == "__main__":
-    out_path = os.path.join(DATA_DIR, "sample.parquet")
+    print("=" * 55)
+    print("Ask APD — Dataset Downloader")
+    print("Source: McAuley-Lab/Amazon-Reviews-2023 (HuggingFace)")
+    print("=" * 55)
+    print()
 
-    print("Generating synthetic e-commerce dataset (5,000 rows)...")
-    df = generate_synthetic_sample(5000)
-    df.to_parquet(out_path, index=False)
-    print(f"Saved to {out_path}")
-    print(f"Shape: {df.shape}")
-    print(f"Columns: {list(df.columns)}")
-    print("\nSample:")
-    print(df.head(3))
+    download_beauty_products()
+    download_beauty_reviews()
+    download_electronics_products()
+    download_electronics_reviews()
 
-    print("\nTo use Amazon Reviews instead (2M+ rows), run:")
-    print("  pip install datasets")
-    print("  python -c \"")
-    print("  from datasets import load_dataset")
-    print("  ds = load_dataset('McAuley-Lab/Amazon-Reviews-2023',")
-    print("                    'raw_review_All_Beauty', trust_remote_code=True)")
-    print(f"  ds['full'].to_parquet('{out_path}')")
-    print("  \"")
+    print()
+    print("All datasets ready. Run the app with:")
+    print("  streamlit run app.py")
