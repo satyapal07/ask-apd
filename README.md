@@ -2,7 +2,7 @@
 
 > Ask questions about large datasets in plain English. Get instant answers + visualizations.
 
-**[🚀 Live Demo →](https://satyapal07-ask-apd.streamlit.app)** *(coming soon)*
+**[🚀 Live Demo →](https://satyapal07-ask-apd.streamlit.app)**
 
 ---
 
@@ -173,6 +173,47 @@ cp .env.example .env
 # Launch
 streamlit run app.py
 ```
+
+---
+
+## Adding Your Own Tables
+
+The app auto-discovers any table defined in `catalog/tables.json` that has a matching parquet file in `data/`. To add a new dataset:
+
+**1. Drop your parquet file into `data/`**
+```bash
+data/my_table.parquet
+```
+
+**2. Add an entry to `catalog/tables.json`**
+```json
+"my_table": {
+  "file": "data/my_table.parquet",
+  "description": "One-sentence description shown in the sidebar.",
+  "sample_questions": [
+    "What is the distribution of X?",
+    "Which Y has the most Z?"
+  ],
+  "columns": {
+    "column_name": "Plain-English definition of what this column means and how to use it",
+    "another_column": "Include units, value ranges, and any gotchas (e.g. null rate)"
+  },
+  "join_keys": {
+    "other_table": "shared_column_name"
+  },
+  "data_caveats": [
+    "Any known data quality issues Claude should know about"
+  ]
+}
+```
+
+**3. Restart the app** — it will pick up the new table automatically.
+
+**Tips:**
+- `columns` entries are injected verbatim into Claude's prompt — write them like you're briefing a junior analyst. The more business context, the better the queries.
+- `data_caveats` suppresses bad queries before they happen (e.g. *"price has ~74% null rate — always dropna() first"*).
+- `join_keys` tells Claude how to join across tables for cross-dataset questions.
+- Any standard pandas-readable format works if you convert it to parquet first: `df.to_parquet("data/my_table.parquet", index=False)`.
 
 ---
 

@@ -14,7 +14,26 @@ st.caption("Natural language → data insights · Powered by Claude Opus 4.6")
 tables = load_all_tables()
 
 if not tables:
-    st.error("No datasets found in `data/`. Run `python utils/download_sample.py` first.")
+    st.info("No datasets loaded yet. Download the sample Amazon review datasets to get started.")
+    st.markdown("""
+    **4 tables · 1.47M rows · ~280 MB total**
+    - `beauty_reviews` — 701K customer reviews for Beauty products
+    - `beauty_products` — 112K Beauty product catalog entries
+    - `electronics_reviews` — 500K customer reviews for Electronics
+    - `electronics_products` — 161K Electronics product catalog entries
+    """)
+    if st.button("⬇️ Download Sample Data", type="primary"):
+        from utils.download_sample import (
+            download_beauty_products, download_beauty_reviews,
+            download_electronics_products, download_electronics_reviews,
+        )
+        progress = st.progress(0, text="Starting download...")
+        download_beauty_products();  progress.progress(25, text="Downloading beauty products... ✓  Fetching beauty reviews (large)...")
+        download_beauty_reviews();   progress.progress(50, text="Beauty reviews ✓  Fetching electronics products...")
+        download_electronics_products(); progress.progress(75, text="Electronics products ✓  Fetching electronics reviews (large)...")
+        download_electronics_reviews();  progress.progress(100, text="All datasets ready!")
+        st.success("Download complete! Reloading...")
+        st.rerun()
     st.stop()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
