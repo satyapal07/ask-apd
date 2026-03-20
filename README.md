@@ -206,4 +206,4 @@ The core pipeline — intent understanding → context injection → few-shot re
 
 ---
 
-*Architecture reference: [From Text-to-SQL to an Analytics Agent](https://medium.com/pinterest-engineering), Pinterest Engineering Blog.*
+*Pinterest Engineering independently published a similar architecture in [From Text-to-SQL to an Analytics Agent](https://medium.com/pinterest-engineering) — a useful read on how the same principles scale to 100,000+ tables.*
