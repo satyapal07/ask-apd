@@ -34,11 +34,11 @@ Since internal implementation details are confidential, this repo is a from-scra
 
 ---
 
-## Inspired by Pinterest's Analytics Agent
+## Pinterest Arrived at the Same Architecture
 
-The architecture here closely parallels what Pinterest Engineering described in [*From Text-to-SQL to an Analytics Agent*](https://medium.com/pinterest-engineering). Pinterest faced the same core problem at larger scale: **100,000+ analytical tables**, **2,500+ analysts** across dozens of domains, and keyword-based retrieval that broke down as soon as the user's phrasing didn't match a table description.
+When Pinterest Engineering published [*From Text-to-SQL to an Analytics Agent*](https://medium.com/pinterest-engineering), the architecture they described was a strong external validation of the same approach PayLens had taken internally. Pinterest faced the same core problem at larger scale — **100,000+ analytical tables**, **2,500+ analysts** across dozens of domains — and independently converged on the same solutions.
 
-Their two key engineering choices — and how PayLens approached the same problems:
+Their two key engineering choices mirror what PayLens had already built:
 
 **1. Unified context-intent embeddings**
 Pinterest transforms historical analyst queries into semantically rich representations that capture *the business question a query was designed to answer*, not raw SQL syntax. PayLens did the same using QueryForge query history: each SQL query was annotated with its analytical intent (e.g. *"authorization rate trend for high-risk merchants"*), enabling retrieval that matched meaning rather than keywords.
@@ -46,7 +46,7 @@ Pinterest transforms historical analyst queries into semantically rich represent
 **2. Structural & statistical patterns with governance-aware ranking**
 Pinterest extracts validated join keys, filters, and aggregation logic from query history, then ranks results by governance signals (table tiers, freshness, documentation quality). At APD, DataCompass tier tags played the same role — Tier 1 tables (production-quality, actively owned) ranked above Tier 3 staging or deprecated tables, and TxnMetrics definitions ensured metric calculations were consistent across teams.
 
-The result in both cases is **self-reinforcing**: every query an analyst writes enriches the knowledge base. The combined expertise of hundreds of analysts becomes accessible to everyone, rather than siloed within individual teams.
+The fact that two independent teams — one at Amazon Payments, one at Pinterest — converged on the same architecture is a testament to how well-suited this approach is for large-scale internal analytics. The result in both cases is **self-reinforcing**: every query an analyst writes enriches the knowledge base, making the combined expertise of hundreds of analysts accessible to everyone rather than siloed within individual teams.
 
 ---
 
