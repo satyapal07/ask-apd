@@ -1,0 +1,11 @@
+.env
+venv/
+catalog/query_history.db
+__pycache__/
+*.pyc
+.DS_Store
+data/*.parquet
+data/*.csv
+data/*.json
+assets/demo.gif
+.streamlit/secrets.toml

@@ -1,0 +1,132 @@
+{
+  "beauty_reviews": {
+    "file": "data/beauty_reviews.parquet",
+    "description": "Customer reviews for Amazon Beauty & Personal Care products (2000–2023). Contains star ratings, review text, helpfulness votes, and verification status. 701K rows.",
+    "sample_questions": [
+      "Which brands have the highest average rating?",
+      "Show review volume by year",
+      "What percentage of reviews are verified purchases?",
+      "Which products have the most helpful votes?",
+      "Show the distribution of star ratings",
+      "What is the average review length by star rating?"
+    ],
+    "columns": {
+      "review_date": "Timestamp of review submission (datetime)",
+      "review_year": "Year extracted from review_date (int)",
+      "review_month": "Month extracted from review_date (1–12)",
+      "review_quarter": "Quarter extracted from review_date (1–4)",
+      "star_rating": "1–5 star rating given by reviewer. 4.0+ is considered positive sentiment at Amazon",
+      "review_title": "Short title/headline of the review written by reviewer",
+      "review_text": "Full text body of the review. Use str.len() for length analysis",
+      "review_length": "Character length of review_text (pre-computed)",
+      "helpful_votes": "Number of times other users clicked 'helpful' on this review. NOT a product quality metric — reflects review quality/usefulness",
+      "verified_purchase": "True if Amazon confirmed the reviewer purchased the product. Filter to True to reduce fake reviews",
+      "parent_asin": "Product identifier. Join to beauty_products or electronics_products on parent_asin",
+      "product_title": "Name of the product being reviewed",
+      "main_category": "Always 'All Beauty' in this table",
+      "brand": "Brand/store name of the product",
+      "price": "Product price in USD at time of listing. Has ~74% null rate — always dropna() before price analysis"
+    },
+    "join_keys": {
+      "beauty_products": "parent_asin"
+    },
+    "data_caveats": [
+      "price has ~74% null rate — always dropna() or use notna() filter before price analysis",
+      "star_rating is float (e.g. 4.0, not 4) — use >= 4.0 not == 4",
+      "review_date goes back to year 2000 but most reviews are post-2015",
+      "helpful_votes is often 0 — consider filtering helpful_votes > 0 for helpful review analysis"
+    ]
+  },
+
+  "beauty_products": {
+    "file": "data/beauty_products.parquet",
+    "description": "Amazon Beauty product catalog with metadata: average ratings, price, brand, category. 112K unique products. Join to beauty_reviews on parent_asin.",
+    "sample_questions": [
+      "Which brands have the most products listed?",
+      "What is the price distribution of beauty products?",
+      "Which products have the highest number of ratings?",
+      "Show average product rating by brand",
+      "What are the most expensive beauty products?"
+    ],
+    "columns": {
+      "parent_asin": "Product identifier. Join to beauty_reviews or electronics_reviews on parent_asin",
+      "product_title": "Full product name as listed on Amazon",
+      "main_category": "Top-level category — always 'All Beauty' in this table",
+      "average_rating": "Aggregate average star rating across all reviews for the product (float, 1.0–5.0)",
+      "rating_number": "Total count of ratings (not reviews) the product has received. High values indicate popular products",
+      "price": "Current list price in USD. Has ~74% null rate — always dropna() before price analysis",
+      "brand": "Brand or store name. May be null for generic/unbranded products",
+      "categories": "List of subcategories (e.g. ['Hair Care', 'Shampoo']). Use explode() to analyze subcategory breakdown"
+    },
+    "join_keys": {
+      "beauty_reviews": "parent_asin"
+    },
+    "data_caveats": [
+      "price has ~74% null rate — always dropna() before price analysis",
+      "average_rating is the product-level aggregate, not per-review. Use beauty_reviews for per-review star_rating",
+      "rating_number counts ratings, which includes star-only ratings with no text review"
+    ]
+  },
+
+  "electronics_reviews": {
+    "file": "data/electronics_reviews.parquet",
+    "description": "Customer reviews for Amazon Electronics products (1998–2023). Same schema as beauty_reviews but for electronics category. 500K rows.",
+    "sample_questions": [
+      "How does electronics review sentiment compare to beauty?",
+      "Which electronics sub-categories get the best ratings?",
+      "Show electronics review volume growth over time",
+      "What is the average rating for electronics vs beauty products?",
+      "Which electronics products have the most helpful reviews?"
+    ],
+    "columns": {
+      "review_date": "Timestamp of review submission (datetime)",
+      "review_year": "Year extracted from review_date (int)",
+      "review_month": "Month extracted from review_date (1–12)",
+      "review_quarter": "Quarter extracted from review_date (1–4)",
+      "star_rating": "1–5 star rating. 4.0+ considered positive. Electronics avg ~4.23 vs Beauty ~3.96",
+      "review_title": "Short headline of the review",
+      "review_text": "Full review text body",
+      "review_length": "Character length of review_text (pre-computed)",
+      "helpful_votes": "Number of helpful upvotes on this review",
+      "verified_purchase": "True if Amazon confirmed the reviewer purchased the product",
+      "parent_asin": "Product identifier. Join to electronics_products on parent_asin"
+    },
+    "join_keys": {
+      "electronics_products": "parent_asin"
+    },
+    "data_caveats": [
+      "This is a 500K sample of a 22GB dataset — not the full electronics catalog",
+      "star_rating is float — use >= 4.0 not == 4",
+      "Date range starts from 1998 but volume is sparse before 2010"
+    ]
+  },
+
+  "electronics_products": {
+    "file": "data/electronics_products.parquet",
+    "description": "Amazon Electronics product catalog with metadata. 161K unique products from first shard. Join to electronics_reviews on parent_asin.",
+    "sample_questions": [
+      "Which electronics brands have the most products?",
+      "What is the price range of electronics products?",
+      "Which electronics sub-categories have the highest average ratings?",
+      "Compare average ratings between electronics and beauty product catalogs"
+    ],
+    "columns": {
+      "parent_asin": "Product identifier. Join to electronics_reviews on parent_asin",
+      "product_title": "Full product name as listed on Amazon",
+      "main_category": "Top-level category (e.g. 'All Electronics', 'Computers', 'Camera & Photo')",
+      "average_rating": "Aggregate average star rating across all reviews (float, 1.0–5.0)",
+      "rating_number": "Total count of ratings the product has received",
+      "price": "Current list price in USD. High null rate — always dropna() before price analysis",
+      "brand": "Brand or store name",
+      "categories": "List of subcategories. Use explode() to analyze subcategory breakdown"
+    },
+    "join_keys": {
+      "electronics_reviews": "parent_asin"
+    },
+    "data_caveats": [
+      "This is shard 0 of 10 from the full electronics catalog — not all electronics products are present",
+      "price has high null rate — always dropna() before price analysis",
+      "main_category values vary: 'All Electronics', 'Computers', 'Camera & Photo', etc."
+    ]
+  }
+}
