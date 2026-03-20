@@ -19,35 +19,50 @@ Type any question → the system picks the right tables, injects schema knowledg
 
 ---
 
-## Inspired by Pinterest's Analytics Agent
+## Background
 
-This project is a portable, open-source implementation of the architecture Pinterest Engineering described in [*From Text-to-SQL to an Analytics Agent*](https://medium.com/pinterest-engineering).
+This project is a public, open-source rebuild of **PayLens** — an internal natural language analytics tool I worked on as part of the Amazon Payments Data (APD) team.
 
-Pinterest's production system serves **2,500+ analysts** across **100,000+ analytical tables**. Their key insight: simple keyword matching and table summaries aren't enough at scale. When an analyst asks *"What's the engagement rate for organic content by country?"*, they need the system to understand **analytical intent** — the business question behind the query — not just surface tables with similar names.
+At Amazon Payments, analysts across fraud, risk, merchant growth, and finance teams needed answers from **PayLake**, the payments data warehouse, which housed thousands of tables covering transactions, merchant behavior, authorization flows, and customer payment methods. The challenge was the same one Pinterest later described publicly: with hundreds of analytical tables and dozens of domain teams, simple keyword search wasn't enough. An analyst asking *"What's the authorization rate for new merchants in LATAM last quarter?"* needed the system to understand payment domain intent — not just match table names.
 
-They solved this with two engineering choices:
+**PayLens** addressed this by building on top of two internal platforms:
+- **DataCompass** — APD's internal data catalog, which stored table ownership, column-level metric definitions (e.g. `auth_rate`, `dispute_rate`, `gmv`), and data quality tiers. Equivalent to Pinterest's PinCat.
+- **QueryForge** — the internal collaborative SQL editor where analysts wrote, ran, and shared queries. The history of analyst queries in QueryForge became the training signal for the system — the same insight Pinterest described as *"your analysts already wrote the perfect prompt."*
+- **TxnMetrics** — a centralized library of payment metric definitions (e.g. *"GMV = sum of authorized transaction amounts excluding refunds"*) that was injected into prompts to ground the LLM in Amazon Payments-specific business logic.
 
-1. **Unified context-intent embeddings** — Transform historical analyst queries into semantically rich representations that capture *what business question a query was designed to answer*, not raw SQL syntax. This enables retrieval that understands meaning, not keywords.
-2. **Structural & statistical patterns with governance-aware ranking** — Extract validated join keys, filters, and aggregation logic from query history, combined with governance metadata (table tiers, freshness, documentation quality) to surface not just relevant tables, but *trustworthy* ones.
-
-The result is **self-reinforcing**: every query an analyst writes enriches the knowledge base, making the system better for the next analyst. In effect, the combined expertise of 2,500 analysts becomes accessible to everyone rather than siloed within teams.
+Since internal implementation details are confidential, this repo is a from-scratch public reimplementation using the same architectural principles — applied to Amazon's public review dataset instead.
 
 ---
 
-## How This Project Maps to Pinterest's Architecture
+## Inspired by Pinterest's Analytics Agent
 
-| Pinterest (Production) | Ask APD (This Project) |
-|---|---|
-| 100,000+ warehouse tables | 4 Amazon dataset tables |
-| PinCat data catalog (built on DataHub) | `catalog/tables.json` — column docs, caveats, join keys |
-| Table discovery via vector embeddings over query history | Claude-powered table selector routing questions to relevant tables |
-| Domain context injection (glossary terms, metric definitions) | Column-level business definitions + data caveats injected per query |
-| SQL→text pipeline: summary + analytical questions + breakdown | Claude generates pandas code + chart spec + plain-English explanation |
-| Query history as few-shot knowledge base | SQLite query memory — past Q→code pairs injected as examples |
-| Governance-aware ranking (table tiers, freshness) | `catalog/tables.json` data caveats flag unreliable columns |
-| Self-reinforcing learning cycle | Every successful answer saved to query history |
-| Vector DB as a Service (OpenSearch + Airflow) | SQLite + keyword scoring (swap in ChromaDB/FAISS to scale) |
-| AI-generated table & column documentation | Column docs written once in `catalog/tables.json` |
+The architecture here closely parallels what Pinterest Engineering described in [*From Text-to-SQL to an Analytics Agent*](https://medium.com/pinterest-engineering). Pinterest faced the same core problem at larger scale: **100,000+ analytical tables**, **2,500+ analysts** across dozens of domains, and keyword-based retrieval that broke down as soon as the user's phrasing didn't match a table description.
+
+Their two key engineering choices — and how PayLens approached the same problems:
+
+**1. Unified context-intent embeddings**
+Pinterest transforms historical analyst queries into semantically rich representations that capture *the business question a query was designed to answer*, not raw SQL syntax. PayLens did the same using QueryForge query history: each SQL query was annotated with its analytical intent (e.g. *"authorization rate trend for high-risk merchants"*), enabling retrieval that matched meaning rather than keywords.
+
+**2. Structural & statistical patterns with governance-aware ranking**
+Pinterest extracts validated join keys, filters, and aggregation logic from query history, then ranks results by governance signals (table tiers, freshness, documentation quality). At APD, DataCompass tier tags played the same role — Tier 1 tables (production-quality, actively owned) ranked above Tier 3 staging or deprecated tables, and TxnMetrics definitions ensured metric calculations were consistent across teams.
+
+The result in both cases is **self-reinforcing**: every query an analyst writes enriches the knowledge base. The combined expertise of hundreds of analysts becomes accessible to everyone, rather than siloed within individual teams.
+
+---
+
+## How This Project Maps to Both Systems
+
+| Amazon Payments (PayLens) | Pinterest (Analytics Agent) | Ask APD (This Project) |
+|---|---|---|
+| PayLake — payments data warehouse | 100,000+ warehouse tables | 4 Amazon review/product tables |
+| DataCompass — internal data catalog | PinCat (built on DataHub) | `catalog/tables.json` |
+| TxnMetrics — payment metric definitions | Glossary terms (e.g. `engaged_user`) | Column-level business definitions in catalog |
+| QueryForge query history | Query history as knowledge base | SQLite query memory |
+| LLM routes to relevant PayLake tables | Vector search over 100K tables | Claude-powered table selector |
+| DataCompass tier tags suppress deprecated tables | Governance-aware ranking | Data caveats flag unreliable columns |
+| SQL generation grounded in TxnMetrics | SQL→text pipeline with domain context | pandas code with injected schema context |
+| Self-reinforcing: every query teaches the system | Self-reinforcing learning cycle | Every answer saved to query history |
+| Internal Redshift + Spark infrastructure | OpenSearch vector DB + Airflow | SQLite + local parquet files |
 
 ---
 
@@ -61,16 +76,17 @@ User Question
 │  STEP 1 — TABLE SELECTION                           │
 │  Claude routes question to relevant table(s)        │
 │  from catalog/tables.json                           │
-│  (Pinterest: vector search over 100K tables)        │
+│  (PayLens: DataCompass table routing                │
+│   Pinterest: vector search over 100K tables)        │
 └─────────────────────────────────────────────────────┘
-     │  selected tables: e.g. ["beauty_reviews",
-     │                          "beauty_products"]
+     │  e.g. ["beauty_reviews", "beauty_products"]
      ▼
 ┌─────────────────────────────────────────────────────┐
 │  STEP 2 — DOMAIN CONTEXT INJECTION                  │
 │  Column definitions, data caveats, join keys        │
 │  injected from catalog/tables.json                  │
-│  (Pinterest: PinCat glossary terms, metric defs)    │
+│  (PayLens: TxnMetrics + DataCompass glossary        │
+│   Pinterest: PinCat glossary terms + metric defs)   │
 └─────────────────────────────────────────────────────┘
      │
      ▼
@@ -78,7 +94,8 @@ User Question
 │  STEP 3 — QUERY MEMORY RETRIEVAL                    │
 │  Top-K similar past Q→code pairs retrieved          │
 │  and injected as few-shot examples                  │
-│  (Pinterest: unified context-intent embeddings)     │
+│  (PayLens: QueryForge history                       │
+│   Pinterest: unified context-intent embeddings)     │
 └─────────────────────────────────────────────────────┘
      │
      ▼
@@ -173,24 +190,20 @@ streamlit run app.py
 
 ---
 
-## What Pinterest's Production System Does Beyond This
+## What Production Systems Do Beyond This
 
-| Capability | Pinterest | This Project |
+| Capability | Amazon Payments (PayLens) / Pinterest | Ask APD (This Project) |
 |---|---|---|
-| Scale | 100K tables, 2,500 analysts | 4 tables, single user |
-| Retrieval | Vector embeddings (OpenSearch) over 400K+ indexed queries | Keyword overlap over SQLite history |
-| Documentation | AI-generated, propagated via join-based lineage (40% manual effort saved) | Hand-written `catalog/tables.json` |
+| Scale | Thousands of tables, hundreds of analysts | 4 tables, single user |
+| Retrieval | Vector embeddings over full query history | Keyword overlap over SQLite history |
+| Documentation | AI-generated, propagated via join-based lineage | Hand-written `catalog/tables.json` |
 | Governance | Table tiers, freshness tracking, owner metadata | Data caveats in catalog |
-| Query output | SQL (runs on data warehouse) | pandas (runs in-memory) |
-| Infrastructure | OpenSearch vector DB, Airflow DAGs, PinCat | SQLite, local files |
+| Metric definitions | Centralized (TxnMetrics / PinCat glossary) | Column-level docs in catalog |
+| Query output | SQL on Redshift / Spark | pandas in-memory |
+| Infrastructure | Redshift, Spark, OpenSearch, Airflow | SQLite, local parquet files |
 
 The core pipeline — intent understanding → context injection → few-shot retrieval → code generation → self-reinforcing loop — is the same. The infrastructure underneath scales differently.
 
 ---
 
-## Background
-
-Inspired by internal data tooling from Amazon's APD team.
-Rebuilt as an open-source implementation of the Pinterest Analytics Agent architecture, using real Amazon review data.
-
-Architecture reference: [*From Text-to-SQL to an Analytics Agent*](https://medium.com/pinterest-engineering), Pinterest Engineering Blog.
+*Architecture reference: [From Text-to-SQL to an Analytics Agent](https://medium.com/pinterest-engineering), Pinterest Engineering Blog.*
