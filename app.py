@@ -6,6 +6,99 @@ from utils.query_memory import get_stats
 
 st.set_page_config(page_title="Ask APD", page_icon="🔍", layout="wide")
 
+# ── Design system ─────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* Buttons — pill shape, warm border, orange primary */
+.stButton > button {
+    border-radius: 24px;
+    border: 1.5px solid #E0D8CF;
+    background: #FFFFFF;
+    color: #1C1917;
+    font-weight: 500;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.stButton > button:hover {
+    border-color: #DF5830;
+    color: #DF5830;
+    background: #FFF5F2;
+}
+/* Primary button (Download, etc.) */
+div[data-testid="stButton"] > button[kind="primary"],
+.stButton > button[kind="primary"] {
+    background: #DF5830 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+}
+div[data-testid="stButton"] > button[kind="primary"]:hover {
+    background: #C94A24 !important;
+}
+
+/* Chat input — rounded */
+.stChatInput textarea, .stChatInput > div {
+    border-radius: 24px !important;
+    border: 1.5px solid #E0D8CF !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    border-right: 1px solid #E0D8CF;
+}
+
+/* Metric cards */
+[data-testid="metric-container"] {
+    background: #FFFFFF;
+    border: 1px solid #E0D8CF;
+    border-radius: 12px;
+    padding: 12px 16px;
+}
+
+/* Expanders */
+[data-testid="stExpander"] {
+    border: 1px solid #E0D8CF;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #E0D8CF;
+}
+
+/* Tabs — underline style */
+.stTabs [data-baseweb="tab-list"] {
+    border-bottom: 1.5px solid #E0D8CF;
+    gap: 8px;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 0;
+    font-weight: 500;
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    border-bottom: 2px solid #DF5830;
+    color: #DF5830;
+}
+
+/* Alerts */
+[data-testid="stAlert"] {
+    border-radius: 10px;
+}
+
+/* Progress bar */
+.stProgress > div > div {
+    background: #DF5830;
+    border-radius: 4px;
+}
+
+/* Divider */
+hr {
+    border-color: #E0D8CF;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ── Header ───────────────────────────────────────────────────────────────────
 st.title("🔍 Ask APD")
 st.caption("Natural language → data insights · Powered by Claude Opus 4.6")
@@ -42,19 +135,20 @@ with st.sidebar:
     st.caption(f"{len(tables)} tables loaded")
 
     TABLE_COLORS = {
-        "beauty_reviews":      "#FF6B9D",
-        "beauty_products":     "#C44B8A",
-        "electronics_reviews": "#4B9FFF",
-        "electronics_products":"#1B6FCC",
+        "beauty_reviews":      "#DF5830",
+        "beauty_products":     "#A83A1A",
+        "electronics_reviews": "#4A7FA5",
+        "electronics_products":"#2D5F80",
     }
 
     for info in table_summary(tables):
         color = TABLE_COLORS.get(info["name"], "#888")
         st.markdown(
-            f'<div style="border-left:4px solid {color};padding:6px 10px;margin:4px 0;border-radius:4px">'
-            f'<b>{info["name"]}</b><br>'
-            f'<small>{info["rows"]:,} rows · {info["columns"]} cols · {info["file_mb"]} MB</small><br>'
-            f'<small style="color:#aaa">{info["description"][:80]}...</small>'
+            f'<div style="border-left:4px solid {color};padding:8px 12px;margin:6px 0;'
+            f'border-radius:8px;background:#FFFFFF;border:1px solid #E0D8CF;border-left:4px solid {color}">'
+            f'<b style="color:#1C1917">{info["name"]}</b><br>'
+            f'<small style="color:#6B6560">{info["rows"]:,} rows · {info["columns"]} cols · {info["file_mb"]} MB</small><br>'
+            f'<small style="color:#9C948E">{info["description"][:80]}...</small>'
             f'</div>',
             unsafe_allow_html=True,
         )
